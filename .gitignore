@@ -1,0 +1,17 @@
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+venv/
+.venv/
+
+# IDE
+.idea/
+
+# Binaries
+*.exe
+ffmpeg.exe
+ffprobe.exe

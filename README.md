@@ -12,6 +12,7 @@ This application is distributed as a portable executable. It does not require a 
 
 ### Setup Steps
 1.  [Download](https://github.com/Kumpaan/Universal-YouTube-Downloader/releases/download/v0.1.0/YouTubeDownloader_v0.1.0.zip) the release `.zip` file.
+1.1. If the download is slow download it from [Google Drive](https://drive.google.com/file/d/1U_dgmNFuNpINMYAF5n-1M2Pe3G7fzsU3/view?usp=sharing)
 2.  **Extract** the zip file to a folder. Do not run it directly from inside the zip.
 3.  Ensure the folder contains these three files side-by-side:
     * `downloader.exe`

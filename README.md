@@ -1,4 +1,4 @@
-# Universal YouTube Downloader (v0.1.0)
+# Universal YouTube Downloader (v0.2.0)
 
 A desktop application for downloading YouTube videos and playlists. It features a specific "Album Maker" mode that converts playlists into properly tagged, organized music albums with cover art.
 
@@ -11,14 +11,17 @@ This application is distributed as a portable executable. It does not require a 
 * **FFmpeg:** This software **will not work** without FFmpeg. It is required for converting audio and merging video streams.
 
 ### Setup Steps
-1.  [Download](https://github.com/Kumpaan/Universal-YouTube-Downloader/releases/download/v0.1.0/YouTubeDownloader_v0.1.0.zip) the release `.zip` file.
+1. [Download](https://github.com/Kumpaan/Universal-YouTube-Downloader/releases/download/v0.1.0/YouTubeDownloader_v0.1.0.zip) the release `.zip` file.
 1.1. If the download is slow download it from [Google Drive](https://drive.google.com/file/d/1U_dgmNFuNpINMYAF5n-1M2Pe3G7fzsU3/view?usp=sharing)
-2.  **Extract** the zip file to a folder. Do not run it directly from inside the zip.
-3.  Ensure the folder contains these three files side-by-side:
+2. **Extract** the zip file to a folder. Do not run it directly from inside the zip.
+3. Ensure the folder contains this file and folder:
     * `downloader.exe`
+    * `bin`
+4. Ensure the bin folder contains these files side by side:
     * `ffmpeg.exe`
     * `ffprobe.exe`
-4.  Run `downloader.exe`.
+    * `icon.con`
+5. Run `downloader.exe`.
 
 ### Troubleshooting Startup
 * **Antivirus Warning:** Because this application is not digitally signed (which costs money), Windows Defender or SmartScreen may flag it. You will likely need to select "More Info" -> "Run Anyway" or whitelist the folder.
@@ -34,6 +37,8 @@ This application is distributed as a portable executable. It does not require a 
     * **Standard:** Downloads Video (MP4) or Audio (MP3). Auto-downloads full playlists if a playlist link is provided.
     * **Album Maker:** Specialized mode for music organization.
 * **Metadata Editing:** Automatically cleans "dirty" YouTube titles (removes "Official Video", "Lyrics", etc.).
+* **Playlist Track Editor:** (New in v0.2.0) Fetch tracklists and manually rename songs before downloading.
+* **Custom Icon:** The app now features a dedicated icon.
 * **Cover Art:** Embeds custom JPG/PNG images into MP3 files.
 * **Smart Folder Management:**
     * Standard playlists create their own subfolders.
@@ -61,6 +66,7 @@ Use this to turn a YouTube Playlist into a clean MP3 album.
 1.  **Input:** Paste a link to a **Playlist** (not a single video).
 2.  **Tags:** Fill in **Artist**, **Album**, and **Year**. These are required.
 3.  **Cover Art:** Click "Select Cover Art" and choose a square JPG/PNG.
+4.  **Edit Tracks (Optional):** Click "Fetch & Edit Tracklist" to review and rename songs before downloading.
 4.  **Download:** Click "START DOWNLOAD".
 5.  **The Process:**
     * The app downloads the audio.

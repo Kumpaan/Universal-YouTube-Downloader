@@ -1,12 +1,24 @@
+"""!
+@file utils.py
+@brief Helper utility functions.
+@details Contains static logic for file path handling and string sanitization.
+"""
+
 import os
 import sys
 import re
 
 
 def get_bin_path(filename):
-    """
-    Returns the path to a binary file.
-    Checks inside './bin/' first, then checking the root folder.
+    """!
+    @brief Resolves the absolute path to a binary file.
+
+    @details logic checks for the file in a `./bin/` subdirectory first (clean structure),
+    then falls back to the root directory (user convenience).
+    Handles Frozen (PyInstaller) and Dev environments.
+
+    @param filename The name of the file to locate (e.g., "ffmpeg.exe").
+    @return Absolute path string to the file.
     """
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
@@ -27,7 +39,11 @@ def get_bin_path(filename):
 
 
 def resource_path(relative_path):
-    """ Get absolute path to resource (for PyInstaller) """
+    """!
+    @brief Resolves resource paths for PyInstaller bundling.
+    @param relative_path The relative path to the asset.
+    @return The absolute path to the unpacked resource in `_MEIPASS`.
+    """
     try:
         base_path = sys._MEIPASS
     except Exception:
@@ -36,9 +52,15 @@ def resource_path(relative_path):
 
 
 def clean_filename_string(raw_title, artist_name):
-    """
-    Pure logic to clean a filename string.
-    Removes artist name redundancy and junk keywords.
+    """!
+    @brief Sanitizes a video title for use as a filename.
+
+    @details Removes redundancy (Artist Name repeated in title) and junk keywords
+    often found in YouTube titles (e.g., "Official Video", "Lyrics").
+
+    @param raw_title The original video title from YouTube.
+    @param artist_name The artist name entered by the user (used for redundancy check).
+    @return A cleaned string ready for file system usage.
     """
     clean = raw_title
 

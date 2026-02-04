@@ -1,6 +1,14 @@
+"""!
+@file app.py
+@brief Main application logic class.
+@details Orchestrates the GUI, Multi-threading, and `yt-dlp` execution.
+"""
+
+import customtkinter as ctk
 import yt_dlp
 import threading
 import os
+import sys
 import re
 import requests
 import time
@@ -22,7 +30,14 @@ from ui_components import TrackEditorDialog
 
 
 class DownloaderApp(ctk.CTk):
+    """!
+    @brief The primary Application Class inheriting from customtkinter.CTk.
+    """
+
     def __init__(self):
+        """!
+        @brief Constructor. Initializes window, state flags, and UI.
+        """
         super().__init__()
 
         self.title(APP_TITLE)
@@ -30,7 +45,7 @@ class DownloaderApp(ctk.CTk):
         self.configure(fg_color=YT_BG)
         self.resizable(0, 0)
 
-        # ID Setup (Windows)
+        # ID Setup (Windows Taskbar Grouping)
         if os.name == 'nt':
             try:
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
@@ -40,24 +55,46 @@ class DownloaderApp(ctk.CTk):
             except Exception:
                 pass
 
-        # State Flags
+        # --- State Flags ---
+        ## @var is_downloading
+        # Boolean flag (1/0) to prevent multiple download threads.
         self.is_downloading = 0
+
+        ## @var cancel_download
+        # Boolean flag (1/0) to signal the thread to stop.
         self.cancel_download = 0
+
+        ## @var target_folder
+        # The currently selected download directory.
         self.target_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+
+        ## @var cover_art_path
+        # Path to the user-selected cover art image.
         self.cover_art_path = ""
-        self.overwrite_permission = None
+
+        ## @var custom_tracks
+        # List of renamed strings from the Editor.
         self.custom_tracks = None
 
-        # Init UI
+        ## @var selected_indices_str
+        # String for yt-dlp --playlist-items (e.g., "1,2,5"). None implies "all".
+        self.selected_indices_str = None
+
+        self.overwrite_permission = None
+
+        # Init UI & Checks
         self.create_widgets()
         self.check_ffmpeg_integrity()
 
     def create_widgets(self):
+        """!
+        @brief Builds the GUI elements (Buttons, Tabs, Inputs).
+        """
         self.lbl_title = ctk.CTkLabel(self, text="YouTube Downloader", font=("Roboto", 24, "bold"),
                                       text_color=TEXT_WHITE)
         self.lbl_title.pack(pady=10)
 
-        # URL Input
+        # --- URL Input Area ---
         self.frame_url = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_url.pack(pady=5)
         self.entry_url = ctk.CTkEntry(self.frame_url, placeholder_text="Paste Link Here", width=400, fg_color=YT_SEC,
@@ -69,7 +106,7 @@ class DownloaderApp(ctk.CTk):
                                        fg_color=YT_SEC, hover_color="gray")
         self.btn_paste.grid(row=0, column=1, padx=5)
 
-        # Preview
+        # --- Preview Area ---
         self.frame_preview = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_preview.pack(pady=5)
         self.lbl_thumbnail = ctk.CTkLabel(self.frame_preview, text="", height=1)
@@ -79,7 +116,7 @@ class DownloaderApp(ctk.CTk):
         self.lbl_video_title = ctk.CTkLabel(self, text="", font=("Arial", 12, "bold"), text_color="gray")
         self.lbl_video_title.pack(pady=0)
 
-        # Tabs
+        # --- Tab View ---
         self.tab_view = ctk.CTkTabview(self, width=550, height=350, fg_color=YT_SEC, segmented_button_fg_color=YT_BG,
                                        segmented_button_selected_color=YT_RED,
                                        segmented_button_selected_hover_color=YT_RED_HOVER)
@@ -87,30 +124,41 @@ class DownloaderApp(ctk.CTk):
         self.tab_std = self.tab_view.add("Standard Download")
         self.tab_album = self.tab_view.add("Music Album Maker")
 
-        # Standard Tab
+        # === Standard Tab ===
         self.lbl_std_info = ctk.CTkLabel(self.tab_std, text="Standard: Auto-creates folders for Playlists.",
                                          text_color="gray")
         self.lbl_std_info.pack(pady=5)
+
         self.opt_format = ctk.CTkOptionMenu(self.tab_std, values=["Video (MP4)", "Audio Only (MP3)"],
                                             command=self.update_quality_options, fg_color=YT_RED, button_color=YT_RED)
-        self.opt_format.pack(pady=10)
+        self.opt_format.pack(pady=5)
+
         self.opt_quality = ctk.CTkOptionMenu(self.tab_std, values=["1080p", "720p", "480p", "360p"], fg_color=YT_SEC,
                                              button_color=YT_SEC)
-        self.opt_quality.pack(pady=10)
+        self.opt_quality.pack(pady=5)
+
         self.check_playlist = ctk.CTkCheckBox(self.tab_std, text="Download as Playlist / Mix", onvalue=1, offvalue=0)
         self.check_playlist.select()
         self.check_playlist.pack(pady=10)
 
-        # Album Tab
+        # New: Playlist Filter Button for Standard Tab
+        self.btn_std_select = ctk.CTkButton(self.tab_std, text="Select Videos / Edit Names",
+                                            command=self.launch_track_editor, fg_color=YT_SEC, hover_color="gray",
+                                            border_width=1, border_color="gray")
+        self.btn_std_select.pack(pady=5)
+
+        # === Album Tab ===
         self.lbl_alb_info = ctk.CTkLabel(self.tab_album, text="Album: Creates 'Artist - Album' folder.",
                                          text_color="gray")
         self.lbl_alb_info.pack(pady=2)
+
         self.entry_artist = ctk.CTkEntry(self.tab_album, placeholder_text="Artist Name", width=300)
         self.entry_artist.pack(pady=5)
         self.entry_album = ctk.CTkEntry(self.tab_album, placeholder_text="Album Name", width=300)
         self.entry_album.pack(pady=5)
         self.entry_year = ctk.CTkEntry(self.tab_album, placeholder_text="Year", width=300)
         self.entry_year.pack(pady=5)
+
         self.opt_album_quality = ctk.CTkOptionMenu(self.tab_album, values=["320kbps", "192kbps", "128kbps"],
                                                    fg_color=YT_SEC, button_color=YT_SEC)
         self.opt_album_quality.set("192kbps")
@@ -126,7 +174,7 @@ class DownloaderApp(ctk.CTk):
                                              border_width=1, border_color=YT_RED, width=140)
         self.btn_edit_tracks.grid(row=0, column=1, padx=5)
 
-        # Folder Selection
+        # --- Folder Selection ---
         self.frame_folder = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_folder.pack(pady=5)
         self.entry_folder = ctk.CTkEntry(self.frame_folder, width=350, fg_color=YT_SEC, text_color=TEXT_WHITE)
@@ -136,7 +184,7 @@ class DownloaderApp(ctk.CTk):
                                         fg_color=YT_SEC, hover_color="gray")
         self.btn_browse.grid(row=0, column=1, padx=5)
 
-        # Action Buttons
+        # --- Action Buttons ---
         self.frame_actions = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_actions.pack(pady=10)
         self.btn_download = ctk.CTkButton(self.frame_actions, text="START DOWNLOAD", command=self.start_thread,
@@ -151,7 +199,7 @@ class DownloaderApp(ctk.CTk):
                                              text_color="gray", width=100, height=40, state="disabled")
         self.btn_open_folder.grid(row=0, column=2, padx=5)
 
-        # Status
+        # --- Status Bar ---
         self.progress_bar = ctk.CTkProgressBar(self, width=500, progress_color=YT_RED)
         self.progress_bar.set(0)
         self.progress_bar.pack(pady=5)
@@ -163,6 +211,10 @@ class DownloaderApp(ctk.CTk):
     # --- Logic ---
 
     def check_ffmpeg_integrity(self):
+        """!
+        @brief Verifies existence of FFmpeg binary on startup.
+        @details Disables the download button if FFmpeg is missing.
+        """
         if os.name == 'nt':
             if not os.path.exists(get_bin_path("ffmpeg.exe")):
                 self.lbl_status.configure(text="CRITICAL ERROR: bin/ffmpeg.exe missing!", text_color="red")
@@ -173,12 +225,19 @@ class DownloaderApp(ctk.CTk):
                 self.btn_download.configure(state="disabled")
 
     def stop_download(self):
+        """!
+        @brief Signals the download thread to stop gracefully.
+        """
         if self.is_downloading:
             self.cancel_download = 1
             self.lbl_status.configure(text="Stopping...", text_color="yellow")
             self.btn_stop.configure(state="disabled")
 
     def update_quality_options(self, choice):
+        """!
+        @brief Updates the Quality dropdown options based on Format selection.
+        @param choice The selected string ("Video" or "Audio").
+        """
         if choice == "Video (MP4)":
             self.opt_quality.configure(values=["1080p", "720p", "480p", "360p"])
             self.opt_quality.set("1080p")
@@ -187,6 +246,9 @@ class DownloaderApp(ctk.CTk):
             self.opt_quality.set("192kbps")
 
     def browse_folder(self):
+        """!
+        @brief Opens a native OS dialog to select destination folder.
+        """
         folder = filedialog.askdirectory()
         if folder:
             self.target_folder = folder
@@ -194,6 +256,9 @@ class DownloaderApp(ctk.CTk):
             self.entry_folder.insert(0, self.target_folder)
 
     def select_cover_art(self):
+        """!
+        @brief Opens a dialog to select a JPG/PNG image for album art.
+        """
         img_path = filedialog.askopenfilename(filetypes=[("Images", "*.jpg *.png *.jpeg")])
         if img_path:
             self.cover_art_path = img_path
@@ -207,6 +272,9 @@ class DownloaderApp(ctk.CTk):
                 self.lbl_status.configure(text="Invalid Image", text_color="red")
 
     def open_target_folder(self):
+        """!
+        @brief Opens the destination folder in the OS File Explorer.
+        """
         if hasattr(self, 'final_download_path') and os.path.exists(self.final_download_path):
             path = self.final_download_path
         else:
@@ -220,6 +288,9 @@ class DownloaderApp(ctk.CTk):
                 subprocess.Popen(['xdg-open', path])
 
     def paste_and_load(self):
+        """!
+        @brief Pastes content from clipboard and triggers info fetch.
+        """
         try:
             content = self.clipboard_get()
             if "import " in content or "def " in content:
@@ -232,10 +303,17 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Clipboard Empty", text_color="red")
 
     def load_video_info_thread(self):
+        """!
+        @brief Spawns a background thread to fetch video metadata/thumbnail.
+        """
         url = self.entry_url.get()
         if url: threading.Thread(target=self.fetch_thumbnail, args=(url,), daemon=True).start()
 
     def fetch_thumbnail(self, url):
+        """!
+        @brief Logic to fetch video title and thumbnail using yt-dlp.
+        @param url The YouTube URL.
+        """
         try:
             self.lbl_status.configure(text="Fetching Info...", text_color="yellow")
             with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': 'in_playlist'}) as ydl:
@@ -279,12 +357,24 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Could not load preview", text_color="red")
 
     def launch_track_editor(self):
+        """!
+        @brief Opens the Track Editor popup. Fetches list if needed.
+        """
         url = self.entry_url.get()
         if not url: return
-        self.btn_edit_tracks.configure(state="disabled", text="Fetching...")
-        threading.Thread(target=self.fetch_tracks_for_editor, args=(url,), daemon=True).start()
 
-    def fetch_tracks_for_editor(self, url):
+        # Determine which button triggered this to update text state
+        active_btn = self.btn_edit_tracks if self.tab_view.get() == "Music Album Maker" else self.btn_std_select
+
+        active_btn.configure(state="disabled", text="Fetching...")
+        threading.Thread(target=self.fetch_tracks_for_editor, args=(url, active_btn), daemon=True).start()
+
+    def fetch_tracks_for_editor(self, url, btn_widget):
+        """!
+        @brief Background thread to get playlist entries for editing.
+        @param url The Playlist/Video URL.
+        @param btn_widget The button widget to re-enable after fetching.
+        """
         try:
             with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -292,13 +382,38 @@ class DownloaderApp(ctk.CTk):
             self.after(0, lambda: TrackEditorDialog(self, tracks, self.save_tracklist))
         except:
             self.lbl_status.configure(text="Error fetching tracklist", text_color="red")
-        self.btn_edit_tracks.configure(state="normal", text="Fetch & Edit Tracklist")
 
-    def save_tracklist(self, new_list):
-        self.custom_tracks = new_list
-        self.lbl_status.configure(text=f"Saved {len(new_list)} Custom Titles!", text_color="green")
+        btn_widget.configure(state="normal", text="Select Videos / Edit Names")
+
+    def save_tracklist(self, new_titles, download_states):
+        """!
+        @brief Callback from TrackEditorDialog. Stores user choices.
+
+        @param new_titles List of strings (renamed titles).
+        @param download_states List of integers (1/0) indicating check state.
+        """
+        self.custom_tracks = new_titles
+
+        # Calculate indices string for yt-dlp (e.g., "1,2,5")
+        # yt-dlp playlist indices are 1-based.
+        selected_indices = []
+        count = 0
+        for i, state in enumerate(download_states):
+            if state == 1:
+                selected_indices.append(str(i + 1))
+                count += 1
+
+        if len(selected_indices) == len(download_states):
+            self.selected_indices_str = None  # Download All
+        else:
+            self.selected_indices_str = ",".join(selected_indices)
+
+        self.lbl_status.configure(text=f"Selected {count} of {len(download_states)} tracks.", text_color="green")
 
     def start_thread(self):
+        """!
+        @brief Validates inputs and starts the main download thread.
+        """
         if self.is_downloading == 1: return
         self.cancel_download = 0
         self.btn_open_folder.configure(state="disabled", text_color="gray")
@@ -322,10 +437,16 @@ class DownloaderApp(ctk.CTk):
         threading.Thread(target=self.pre_download_logic, args=(url, base_folder), daemon=True).start()
 
     def trigger_ask_overwrite(self, folder_name):
+        """!
+        @brief Pop-up asking user to confirm merging into an existing folder.
+        """
         res = messagebox.askyesno("Folder Exists", f"Folder '{folder_name}' exists.\nMerge/Overwrite?")
         self.overwrite_permission = res
 
     def pre_download_logic(self, url, base_folder):
+        """!
+        @brief Determines destination paths and handles playlist folder creation logic.
+        """
         try:
             current_tab = self.tab_view.get()
             final_path = base_folder
@@ -368,6 +489,11 @@ class DownloaderApp(ctk.CTk):
             self.finish_download(0)
 
     def run_download(self, url, folder_path):
+        """!
+        @brief Configures `yt-dlp` options and executes the download.
+        @param url Source URL.
+        @param folder_path Output directory.
+        """
         try:
             self.lbl_status.configure(text="Starting...", text_color=TEXT_WHITE)
             current_tab = self.tab_view.get()
@@ -382,6 +508,10 @@ class DownloaderApp(ctk.CTk):
                 'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
             }
 
+            # Apply Filter if selected
+            if self.selected_indices_str:
+                ydl_opts['playlist_items'] = self.selected_indices_str
+
             if os.name == 'nt': ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
             if current_tab == "Standard Download":
@@ -391,9 +521,11 @@ class DownloaderApp(ctk.CTk):
                 if self.check_playlist.get() == 0:
                     ydl_opts['noplaylist'] = True
                 else:
+                    if "list=" in url and not self.selected_indices_str:
+                        # Only cap infinite lists if user hasn't manually selected items
+                        ydl_opts['playlistend'] = 100
                     if "list=" in url:
                         ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
-                        ydl_opts['playlistend'] = 100
 
                 if fmt == "Audio Only (MP3)":
                     ydl_opts['format'] = 'bestaudio/best'
@@ -408,7 +540,8 @@ class DownloaderApp(ctk.CTk):
                 ydl_opts['format'] = 'bestaudio/best'
                 ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3',
                                                'preferredquality': self.opt_album_quality.get().replace("kbps", "")}]
-                ydl_opts['playlistend'] = 100
+                if not self.selected_indices_str:
+                    ydl_opts['playlistend'] = 100
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
@@ -423,6 +556,9 @@ class DownloaderApp(ctk.CTk):
             self.finish_download(0)
 
     def progress_hook(self, d):
+        """!
+        @brief Callback for yt-dlp to update UI progress bar.
+        """
         if self.cancel_download == 1: raise Exception("User Cancelled")
         if d['status'] == 'downloading':
             try:
@@ -436,10 +572,16 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Processing...", text_color="yellow")
 
     def finish_download(self, success):
+        """!
+        @brief Post-download cleanup and UI reset.
+        """
         self.is_downloading = 0
         self.btn_download.configure(state="normal", text="START DOWNLOAD")
         self.btn_stop.configure(state="disabled", fg_color="gray")
         self.progress_bar.set(0)
+
+        # Clear filters for next run
+        self.selected_indices_str = None
 
         if success == 1:
             self.lbl_status.configure(text="Complete!", text_color="green")
@@ -448,6 +590,10 @@ class DownloaderApp(ctk.CTk):
             if self.tab_view.get() == "Music Album Maker": self.batch_tag_files()
 
     def batch_tag_files(self):
+        """!
+        @brief Scans output folder to tag MP3s (Album Mode only).
+        @details Uses 'mutagen' to set ID3 tags and embed cover art.
+        """
         artist = self.entry_artist.get()
         album = self.entry_album.get()
         year = self.entry_year.get()
@@ -459,7 +605,8 @@ class DownloaderApp(ctk.CTk):
                 try:
                     filepath = os.path.join(folder, filename)
 
-                    # Logic for index/naming
+                    # Logic to find which playlist index this file corresponds to
+                    # Filename format from yt-dlp: "01-Title.mp3"
                     file_index = None
                     track_prefix = ""
                     match = re.match(r'^(\d+)-', filename)
@@ -467,7 +614,10 @@ class DownloaderApp(ctk.CTk):
                         track_prefix = match.group(1)
                         file_index = int(track_prefix) - 1
 
-                    # Call Helper Function from utils
+                    # Look up custom name from list if available
+                    # NOTE: custom_tracks contains ALL titles (checked and unchecked).
+                    # Since yt-dlp preserves the original playlist index in %(playlist_index)s,
+                    # we can map directly to the custom_tracks list index.
                     if self.custom_tracks and file_index is not None and 0 <= file_index < len(self.custom_tracks):
                         clean_name = self.custom_tracks[file_index]
                     else:

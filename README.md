@@ -20,7 +20,7 @@ This application is distributed as a portable executable. It does not require a 
 4. Ensure the bin folder contains these files side by side:
     * `ffmpeg.exe`
     * `ffprobe.exe`
-    * `icon.con`
+    * `icon.ico`
 5. Run `downloader.exe`.
 
 ### Troubleshooting Startup
@@ -98,10 +98,11 @@ If you want to modify the source code, follow these steps.
     ```
 
 ### Building the Exe
-To compile the application yourself:
+To compile the application yourself (Updated for Refactor):
 ```bash
-pyinstaller --noconsole --onefile --collect-all customtkinter downloader.py
+pyinstaller --noconsole --onefile --collect-all customtkinter main.py
 ```
 
 ## 5. Disclaimer
+
 Downloading copyrighted content from YouTube may violate their Terms of Service. This tool is provided for educational and personal archiving purposes only. Use responsibly.

@@ -1,4 +1,4 @@
-# Universal YouTube Downloader (v0.2.0)
+# Universal YouTube Downloader (v0.2.1)
 
 A desktop application for downloading YouTube videos and playlists. It features a specific "Album Maker" mode that converts playlists into properly tagged, organized music albums with cover art.
 
@@ -11,7 +11,7 @@ This application is distributed as a portable executable. It does not require a 
 * **FFmpeg:** This software **will not work** without FFmpeg. It is required for converting audio and merging video streams.
 
 ### Setup Steps
-1. [Download](https://github.com/Kumpaan/Universal-YouTube-Downloader/releases/download/v0.2.0/YouTubeDownloader_v0.2.0.zip) the release `.zip` file.
+1. [Download](https://github.com/Kumpaan/Universal-YouTube-Downloader/releases/download/v0.2.1/YouTubeDownloader_v0.2.1.zip) the release `.zip` file.
 1.1. If the download is slow download it from [Google Drive](https://drive.google.com/file/d/1pmsiAfFZM9yfgrQC813fOA9adYEHHn5F/view?usp=sharing)
 2. **Extract** the zip file to a folder. Do not run it directly from inside the zip.
 3. Ensure the folder contains this file and folder:
@@ -37,7 +37,7 @@ This application is distributed as a portable executable. It does not require a 
     * **Standard:** Downloads Video (MP4) or Audio (MP3). Auto-downloads full playlists if a playlist link is provided.
     * **Album Maker:** Specialized mode for music organization.
 * **Metadata Editing:** Automatically cleans "dirty" YouTube titles (removes "Official Video", "Lyrics", etc.).
-* **Playlist Track Editor:** (New in v0.2.0) Fetch tracklists and manually rename songs before downloading.
+* **Playlist Track Editor:** (New in v0.2.1) Fetch tracklists and manually rename songs before downloading.
 * **Custom Icon:** The app now features a dedicated icon.
 * **Cover Art:** Embeds custom JPG/PNG images into MP3 files.
 * **Smart Folder Management:**

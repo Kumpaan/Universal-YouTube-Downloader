@@ -31,16 +31,26 @@ TEXT_WHITE = "#FFFFFF"
 
 def get_bin_path(filename):
     """
-    Returns the path to a binary file or asset.
+    Returns the path to a binary file.
+    Checks inside './bin/' first, then checking the root folder.
     """
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
 
-    # On Windows, we expect a 'bin' folder.
-    # On Linux, we might still want 'bin' for the icon, but not for ffmpeg.
-    return os.path.join(base_path, "bin", filename)
+    # 1. Check inside /bin/ (Clean structure)
+    bin_path = os.path.join(base_path, "bin", filename)
+    if os.path.exists(bin_path):
+        return bin_path
+
+    # 2. Check inside Root (User convenience)
+    root_path = os.path.join(base_path, filename)
+    if os.path.exists(root_path):
+        return root_path
+
+    # Default to bin if neither found (will fail check later)
+    return bin_path
 
 
 def resource_path(relative_path):
@@ -113,14 +123,14 @@ class DownloaderApp(ctk.CTk):
         super().__init__()
 
         self.title("Universal YouTube Downloader v0.2.1")
-        self.geometry("800x800")
+        self.geometry("700x820")
         self.configure(fg_color=YT_BG)
         self.resizable(0, 0)
 
         # ICON & ID SETUP (Windows Only)
         if os.name == 'nt':
             try:
-                myappid = 'kumpaan.youtubedownloader.v0.2.0'
+                myappid = 'kumpaan.youtubedownloader.v0.2.1'
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
                 icon_path = get_bin_path("icon.ico")
@@ -518,21 +528,34 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Starting Download...", text_color=TEXT_WHITE)
             current_tab = self.tab_view.get()
 
+            # 1. FIND FFMPEG (Debug Print)
+            ffmpeg_path = get_bin_path("ffmpeg.exe")
+            ffmpeg_dir = os.path.dirname(ffmpeg_path)
+            print(f"DEBUG: Looking for FFmpeg at: {ffmpeg_dir}")
+
+            if not os.path.exists(os.path.join(ffmpeg_dir, "ffmpeg.exe")):
+                print("DEBUG: FFmpeg NOT FOUND in expected path!")
+
+            # 2. CONFIGURE YT-DLP (Robust Mode)
             ydl_opts = {
                 'outtmpl': f'{folder_path}/%(title)s.%(ext)s',
                 'progress_hooks': [self.progress_hook],
                 'ignoreerrors': True,
+                'verbose': True,  # This prints the REAL error to PyCharm console
+
+                # FIX FOR "PART" FILES (Spoofing)
+                'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
             }
 
-            # PATCH: Only force ffmpeg_location on Windows
+            # Windows-only FFmpeg path
             if os.name == 'nt':
-                ffmpeg_dir = os.path.dirname(get_bin_path("ffmpeg.exe"))
                 ydl_opts['ffmpeg_location'] = ffmpeg_dir
-            # On Linux, omit 'ffmpeg_location', yt-dlp will find it in PATH
 
+            # TAB LOGIC
             if current_tab == "Standard Download":
                 fmt = self.opt_format.get()
                 quality = self.opt_quality.get()
+
                 if "list=" in url:
                     ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
 
@@ -543,7 +566,8 @@ class DownloaderApp(ctk.CTk):
                         {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': kbps}]
                 else:
                     height = quality.replace("p", "")
-                    ydl_opts['format'] = f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+                    # Changed format string to be safer
+                    ydl_opts['format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
 
             elif current_tab == "Music Album Maker":
                 kbps = self.opt_album_quality.get().replace("kbps", "")
@@ -552,17 +576,15 @@ class DownloaderApp(ctk.CTk):
                 ydl_opts['postprocessors'] = [
                     {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': kbps}]
 
+            # EXECUTE
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
             self.finish_download(1)
 
         except Exception as e:
-            if "User Cancelled" in str(e):
-                self.lbl_status.configure(text="Cancelled", text_color="yellow")
-            else:
-                self.lbl_status.configure(text=f"Error: Check Console", text_color="red")
-                print(e)
+            print(f"CRITICAL ERROR: {e}")
+            self.lbl_status.configure(text=f"Error: See Console", text_color="red")
             self.finish_download(0)
 
     def progress_hook(self, d):

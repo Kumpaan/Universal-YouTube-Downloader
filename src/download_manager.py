@@ -8,7 +8,6 @@ import yt_dlp
 import os
 from utils import get_bin_path
 
-
 def fetch_playlist_title(url):
     """!
     @brief Extracts the title of a playlist without downloading it.
@@ -20,11 +19,10 @@ def fetch_playlist_title(url):
             if info.get('_type') == 'playlist':
                 title = info.get('title', 'Playlist')
                 # Remove special chars to make it folder-safe
-                return "".join([c for c in title if c.isalnum() or c == ' ']).strip()
+                return "".join([c for c in title if c.isalnum() or c==' ']).strip()
     except:
         return None
     return None
-
 
 def run_downloader(config, progress_callback):
     """!
@@ -54,7 +52,7 @@ def run_downloader(config, progress_callback):
     if os.name == 'nt':
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
-    # Apply Selective Download (The "Checkbox" feature)
+    # Apply Selective Download
     if config.get('selected_indices'):
         ydl_opts['playlist_items'] = config['selected_indices']
 
@@ -62,10 +60,13 @@ def run_downloader(config, progress_callback):
 
     if config['mode'] == "standard":
         # Standard Mode Logic
-        if not config['is_playlist_mode']:
+
+        # If the App didn't detect a valid playlist, force single video mode.
+        # This handles cases where user pastes a mix link or single video.
+        if not config['detected_playlist']:
             ydl_opts['noplaylist'] = True
         else:
-            # It IS a playlist
+            # It IS a valid playlist
             if "list=" in url:
                 ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
                 # Safety Cap: If user downloaded "whole playlist" without selecting specific items, cap at 100

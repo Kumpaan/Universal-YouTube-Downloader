@@ -122,7 +122,7 @@ class DownloaderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Universal YouTube Downloader v0.2.1")
+        self.title("Universal YouTube Downloader v0.2.3")
         self.geometry("700x820")
         self.configure(fg_color=YT_BG)
         self.resizable(0, 0)
@@ -130,7 +130,7 @@ class DownloaderApp(ctk.CTk):
         # ICON & ID SETUP (Windows Only)
         if os.name == 'nt':
             try:
-                myappid = 'kumpaan.youtubedownloader.v0.2.1'
+                myappid = 'kumpaan.youtubedownloader.v0.2.3'
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
                 icon_path = get_bin_path("icon.ico")
@@ -196,6 +196,11 @@ class DownloaderApp(ctk.CTk):
         self.opt_quality = ctk.CTkOptionMenu(self.tab_std, values=["1080p", "720p", "480p", "360p"], fg_color=YT_SEC,
                                              button_color=YT_SEC)
         self.opt_quality.pack(pady=10)
+
+        self.check_playlist = ctk.CTkCheckBox(self.tab_std, text="Download as Playlist / Mix", onvalue=1, offvalue=0)
+        self.check_playlist.select()  # Default to 1 (Yes)
+
+        self.check_playlist.pack(pady=10)
 
         self.lbl_alb_info = ctk.CTkLabel(self.tab_album, text="Album: Creates 'Artist - Album' folder.",
                                          text_color="gray")
@@ -475,16 +480,26 @@ class DownloaderApp(ctk.CTk):
                     return
                 folder_name = f"{artist} - {album}"
                 final_path = os.path.join(base_folder, folder_name)
+
             else:
-                if "list=" in url:
+                # STANDARD DOWNLOAD TAB LOGIC
+                # Only create a subfolder if it is a playlist AND the checkbox is checked (1)
+                is_playlist_mode = self.check_playlist.get()
+
+                if "list=" in url and is_playlist_mode == 1:
                     with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': 'in_playlist'}) as ydl:
                         info = ydl.extract_info(url, download=False, process=False)
                         if info.get('_type') == 'playlist':
                             title = info.get('title', 'Unknown Playlist')
+                            # Clean the folder name
                             title = "".join([c for c in title if c.isalpha() or c.isdigit() or c == ' ']).strip()
                             final_path = os.path.join(base_folder, title)
 
-            if os.path.exists(final_path):
+                # If is_playlist_mode is 0, we intentionally leave final_path = base_folder
+                # This ensures the single file is dropped directly in Downloads (or selected folder)
+
+            # Check if folder exists and ask permission (Only if we are actually creating a new subfolder)
+            if final_path != base_folder and os.path.exists(final_path):
                 self.after(0, lambda: self.trigger_ask_overwrite(os.path.basename(final_path)))
                 while self.overwrite_permission is None:
                     if self.cancel_download: return
@@ -528,36 +543,35 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Starting Download...", text_color=TEXT_WHITE)
             current_tab = self.tab_view.get()
 
-            # 1. FIND FFMPEG (Debug Print)
+            # 1. FIND FFMPEG
             ffmpeg_path = get_bin_path("ffmpeg.exe")
             ffmpeg_dir = os.path.dirname(ffmpeg_path)
-            print(f"DEBUG: Looking for FFmpeg at: {ffmpeg_dir}")
 
-            if not os.path.exists(os.path.join(ffmpeg_dir, "ffmpeg.exe")):
-                print("DEBUG: FFmpeg NOT FOUND in expected path!")
-
-            # 2. CONFIGURE YT-DLP (Robust Mode)
+            # 2. CONFIGURE YT-DLP
             ydl_opts = {
                 'outtmpl': f'{folder_path}/%(title)s.%(ext)s',
                 'progress_hooks': [self.progress_hook],
-                'ignoreerrors': True,
-                'verbose': True,  # This prints the REAL error to PyCharm console
-
-                # FIX FOR "PART" FILES (Spoofing)
+                'ignoreerrors': False,  # STOP on first error! Do not loop infinitely.
+                'verbose': True,
                 'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
             }
 
-            # Windows-only FFmpeg path
             if os.name == 'nt':
                 ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
-            # TAB LOGIC
             if current_tab == "Standard Download":
                 fmt = self.opt_format.get()
                 quality = self.opt_quality.get()
 
-                if "list=" in url:
-                    ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
+                # --- CHECKBOX LOGIC ---
+                if self.check_playlist.get() == 0:
+                    ydl_opts['noplaylist'] = True
+                else:
+                    # PLAYLIST MODE ON
+                    if "list=" in url:
+                        ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
+                        # SAFETY CAP: Infinite mixes will kill the PC. Cap at 100.
+                        ydl_opts['playlistend'] = 100
 
                 if fmt == "Audio Only (MP3)":
                     kbps = quality.replace("kbps", "")
@@ -566,7 +580,6 @@ class DownloaderApp(ctk.CTk):
                         {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': kbps}]
                 else:
                     height = quality.replace("p", "")
-                    # Changed format string to be safer
                     ydl_opts['format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
 
             elif current_tab == "Music Album Maker":
@@ -575,14 +588,21 @@ class DownloaderApp(ctk.CTk):
                 ydl_opts['format'] = 'bestaudio/best'
                 ydl_opts['postprocessors'] = [
                     {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': kbps}]
+                # Album mode also needs safety cap
+                ydl_opts['playlistend'] = 100
 
-            # EXECUTE
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
             self.finish_download(1)
 
         except Exception as e:
+            # Check for the specific "User Cancelled" message
+            if "User Cancelled" in str(e):
+                self.lbl_status.configure(text="Download Cancelled", text_color="yellow")
+                self.finish_download(0)
+                return
+
             print(f"CRITICAL ERROR: {e}")
             self.lbl_status.configure(text=f"Error: See Console", text_color="red")
             self.finish_download(0)

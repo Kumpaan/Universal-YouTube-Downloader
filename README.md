@@ -7,7 +7,7 @@ A desktop application for downloading YouTube videos and playlists. It features 
 This application is distributed as a portable executable. It does not require a system installation, but it relies on external dependencies.
 
 ### Prerequisites
-* **Windows 10 or 11**
+* **Windows 10 or 11 (and Linux)**
 * **FFmpeg:** This software **will not work** without FFmpeg. It is required for converting audio and merging video streams.
 
 ### Setup Steps

@@ -2,6 +2,7 @@
 @file download_manager.py
 @brief Wrapper for yt-dlp execution.
 @details Handles configuration generation and execution of downloads.
+         Now enforces strict quality control (No 360p fallbacks).
 """
 
 import yt_dlp
@@ -18,7 +19,6 @@ def fetch_playlist_title(url):
             info = ydl.extract_info(url, download=False, process=False)
             if info.get('_type') == 'playlist':
                 title = info.get('title', 'Playlist')
-                # Remove special chars to make it folder-safe
                 return "".join([c for c in title if c.isalnum() or c==' ']).strip()
     except:
         return None
@@ -26,18 +26,18 @@ def fetch_playlist_title(url):
 
 def run_downloader(config, progress_callback):
     """!
-    @brief Configures and runs yt-dlp.
+    @brief Configures and runs yt-dlp with strict quality enforcement.
 
-    @param config Dictionary containing all options (url, folder, format, etc).
+    @param config Dictionary containing all options.
     @param progress_callback Function to handle yt-dlp progress hooks.
-    @throws Exception if download fails or is cancelled.
     """
 
     url = config['url']
     folder_path = config['folder']
 
-    # Locate FFmpeg
-    ffmpeg_dir = os.path.dirname(get_bin_path("ffmpeg.exe"))
+    # 1. SETUP FFMPEG
+    ffmpeg_exe = get_bin_path("ffmpeg.exe")
+    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
 
     # Base Options
     ydl_opts = {
@@ -45,11 +45,13 @@ def run_downloader(config, progress_callback):
         'progress_hooks': [progress_callback],
         'ignoreerrors': False,
         'verbose': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
+        # REMOVED: 'extractor_args' causing the crash due to PO Token requirements
     }
 
-    # OS Specific FFmpeg location
+    # Windows: Force yt-dlp to use our local FFmpeg
     if os.name == 'nt':
+        if not os.path.exists(ffmpeg_exe):
+            raise Exception(f"FFmpeg binary not found at: {ffmpeg_exe}")
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
     # Apply Selective Download
@@ -57,23 +59,17 @@ def run_downloader(config, progress_callback):
         ydl_opts['playlist_items'] = config['selected_indices']
 
     # --- Mode Configuration ---
-
     if config['mode'] == "standard":
-        # Standard Mode Logic
-
-        # If the App didn't detect a valid playlist, force single video mode.
-        # This handles cases where user pastes a mix link or single video.
+        # Playlist Logic
         if not config['detected_playlist']:
             ydl_opts['noplaylist'] = True
         else:
-            # It IS a valid playlist
             if "list=" in url:
                 ydl_opts['outtmpl'] = f'{folder_path}/%(title)s.%(ext)s'
-                # Safety Cap: If user downloaded "whole playlist" without selecting specific items, cap at 100
                 if not config.get('selected_indices'):
                     ydl_opts['playlistend'] = 100
 
-        # Quality / Format Logic
+        # --- QUALITY LOGIC (STRICT) ---
         if config['format_type'] == "audio":
             ydl_opts['format'] = 'bestaudio/best'
             kbps = config['quality'].replace("kbps", "")
@@ -83,12 +79,15 @@ def run_downloader(config, progress_callback):
                 'preferredquality': kbps
             }]
         else:
-            # Video
+            # VIDEO MODE
+            # Forces separate streams (1080p video + audio) to ensure high quality
             height = config['quality'].replace("p", "")
-            ydl_opts['format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
+            ydl_opts['format'] = f'bestvideo[height<={height}]+bestaudio'
+
+            # Ensure it merges into MP4
+            ydl_opts['merge_output_format'] = 'mp4'
 
     elif config['mode'] == "album":
-        # Album Mode Logic
         ydl_opts['outtmpl'] = f'{folder_path}/%(playlist_index)s-%(title)s.%(ext)s'
         ydl_opts['format'] = 'bestaudio/best'
         kbps = config['quality'].replace("kbps", "")

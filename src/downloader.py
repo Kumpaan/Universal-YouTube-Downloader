@@ -6,12 +6,16 @@ import sys
 import re
 import requests
 import time
+import shutil
 from PIL import Image
 from io import BytesIO
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC
 from tkinter import filedialog, messagebox
-import ctypes
+
+# Only import ctypes on Windows to avoid Linux crashes
+if os.name == 'nt':
+    import ctypes
 
 # --- Configuration & Theme ---
 ctk.set_appearance_mode("Dark")
@@ -27,29 +31,24 @@ TEXT_WHITE = "#FFFFFF"
 
 def get_bin_path(filename):
     """
-    Returns the path to a binary file (ffmpeg, icon).
-    Logic:
-    1. If running as compiled exe, look in ./bin/ relative to the exe.
-    2. If running as script, look in ./bin/ relative to script.
+    Returns the path to a binary file or asset.
     """
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         base_path = os.path.dirname(sys.executable)
     else:
-        # Running as python script
         base_path = os.path.dirname(os.path.abspath(__file__))
 
+    # On Windows, we expect a 'bin' folder.
+    # On Linux, we might still want 'bin' for the icon, but not for ffmpeg.
     return os.path.join(base_path, "bin", filename)
 
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
 
@@ -66,11 +65,12 @@ class TrackEditorDialog(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
-        # Set icon for popup too (From bin folder)
-        try:
-            self.after(200, lambda: self.iconbitmap(get_bin_path("icon.ico")))
-        except:
-            pass
+        # Set icon (Windows only for .ico)
+        if os.name == 'nt':
+            try:
+                self.after(200, lambda: self.iconbitmap(get_bin_path("icon.ico")))
+            except:
+                pass
 
         # Title
         self.lbl = ctk.CTkLabel(self, text=f"Edit {len(track_list)} Tracks", font=("Arial", 20, "bold"))
@@ -112,22 +112,22 @@ class DownloaderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Universal YouTube Downloader v0.2.0")
+        self.title("Universal YouTube Downloader v0.2.1")
         self.geometry("800x800")
         self.configure(fg_color=YT_BG)
         self.resizable(0, 0)
 
-        # ICON SETUP
-        try:
-            myappid = 'kumpaan.youtubedownloader.v0.2.0'
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        # ICON & ID SETUP (Windows Only)
+        if os.name == 'nt':
+            try:
+                myappid = 'kumpaan.youtubedownloader.v0.2.0'
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-            # Use the new get_bin_path logic
-            icon_path = get_bin_path("icon.ico")
-            if os.path.exists(icon_path):
-                self.iconbitmap(icon_path)
-        except Exception as e:
-            print(f"Icon Error: {e}")
+                icon_path = get_bin_path("icon.ico")
+                if os.path.exists(icon_path):
+                    self.iconbitmap(icon_path)
+            except Exception as e:
+                print(f"Icon Error: {e}")
 
         # Logic Flags
         self.is_downloading = 0
@@ -250,12 +250,20 @@ class DownloaderApp(ctk.CTk):
     # --- Logic ---
 
     def check_ffmpeg_integrity(self):
-        # UPDATED: Check for ffmpeg in the ./bin/ folder
-        ffmpeg_path = get_bin_path("ffmpeg.exe")
-        if not os.path.exists(ffmpeg_path):
-            self.lbl_status.configure(text="CRITICAL ERROR: bin/ffmpeg.exe missing!", text_color="red")
-            self.lbl_detail_status.configure(text=f"Expected at: {ffmpeg_path}", text_color="red")
-            self.btn_download.configure(state="disabled")
+        """ Checks for FFmpeg on Windows (local bin) OR Linux (system path) """
+        if os.name == 'nt':
+            # Windows: Check local bin folder
+            ffmpeg_path = get_bin_path("ffmpeg.exe")
+            if not os.path.exists(ffmpeg_path):
+                self.lbl_status.configure(text="CRITICAL ERROR: bin/ffmpeg.exe missing!", text_color="red")
+                self.lbl_detail_status.configure(text=f"Expected at: {ffmpeg_path}", text_color="red")
+                self.btn_download.configure(state="disabled")
+        else:
+            # Linux/Mac: Check System PATH
+            if not shutil.which("ffmpeg"):
+                self.lbl_status.configure(text="CRITICAL ERROR: ffmpeg not found!", text_color="red")
+                self.lbl_detail_status.configure(text="Install via: sudo pacman -S ffmpeg", text_color="red")
+                self.btn_download.configure(state="disabled")
 
     def stop_download(self):
         if self.is_downloading:
@@ -293,14 +301,21 @@ class DownloaderApp(ctk.CTk):
 
     def open_target_folder(self):
         if hasattr(self, 'final_download_path') and os.path.exists(self.final_download_path):
-            os.startfile(self.final_download_path)
+            path_to_open = self.final_download_path
         else:
-            path = self.entry_folder.get()
-            if os.path.exists(path):
-                os.startfile(path)
+            path_to_open = self.entry_folder.get()
+
+        if os.path.exists(path_to_open):
+            if os.name == 'nt':
+                os.startfile(path_to_open)
+            else:
+                # Linux support for opening folders
+                import subprocess
+                subprocess.Popen(['xdg-open', path_to_open])
 
     def paste_and_load(self):
         try:
+            # Clipboard handling varies by OS, try/except block remains best
             clipboard_content = self.clipboard_get()
             if "import " in clipboard_content or "def " in clipboard_content:
                 messagebox.showerror("Error", "You pasted Python code, not a URL!")
@@ -406,10 +421,15 @@ class DownloaderApp(ctk.CTk):
             messagebox.showerror("Error", "Please paste a YouTube URL, not code.")
             return
 
-        # Check binary integrity before running
-        if not os.path.exists(get_bin_path("ffmpeg.exe")):
-            messagebox.showerror("Error", "FFmpeg missing from /bin folder!")
-            return
+        # OS Specific Checks
+        if os.name == 'nt':
+            if not os.path.exists(get_bin_path("ffmpeg.exe")):
+                messagebox.showerror("Error", "FFmpeg missing from /bin folder!")
+                return
+        else:
+            if not shutil.which("ffmpeg"):
+                messagebox.showerror("Error", "FFmpeg not installed! Run: sudo pacman -S ffmpeg")
+                return
 
         if not os.path.exists(base_folder):
             try:
@@ -498,15 +518,17 @@ class DownloaderApp(ctk.CTk):
             self.lbl_status.configure(text="Starting Download...", text_color=TEXT_WHITE)
             current_tab = self.tab_view.get()
 
-            # UPDATED: Use get_bin_path for ffmpeg
-            ffmpeg_dir = os.path.dirname(get_bin_path("ffmpeg.exe"))
-
             ydl_opts = {
                 'outtmpl': f'{folder_path}/%(title)s.%(ext)s',
                 'progress_hooks': [self.progress_hook],
                 'ignoreerrors': True,
-                'ffmpeg_location': ffmpeg_dir,  # Point to ./bin/ folder
             }
+
+            # PATCH: Only force ffmpeg_location on Windows
+            if os.name == 'nt':
+                ffmpeg_dir = os.path.dirname(get_bin_path("ffmpeg.exe"))
+                ydl_opts['ffmpeg_location'] = ffmpeg_dir
+            # On Linux, omit 'ffmpeg_location', yt-dlp will find it in PATH
 
             if current_tab == "Standard Download":
                 fmt = self.opt_format.get()
